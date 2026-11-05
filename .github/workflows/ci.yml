@@ -1,7 +1,7 @@
 # Quick check: builds the app, tools and tests on Linux, macOS and Windows and runs the fast tests in
-# parallel. Linux (x86_64 and arm64) builds and runs every fast test. Windows and macOS build and run only the tests
-# whose code differs per OS (labels "platform" and "kernels", tests/platform_tests.txt): the other tests are the same
-# C++ as on Linux, and run there nightly in ci-full.yml. The slow tests and the other code paths run in ci-full.yml. It runs on every push to the 0.2.7
+# parallel. Windows builds and runs every fast test. Linux and macOS build and run only the tests whose code differs
+# per OS (tests/platform_tests.txt): label "platform" on both, and "kernels" (SIMD/FFT/FEC) on macOS as well, the only
+# arm64 (NEON, Accelerate) run here; Linux x86_64 has the same kernels as Windows. The slow tests and the other code paths run in ci-full.yml. It runs on every push to the 0.2.7
 # branch and by hand (Actions tab > CI > Run workflow), so the builds and tests do not have to run on a laptop.
 name: CI
 
@@ -51,14 +51,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # subset: build and run only the platform/kernels tests (DECT2_PLATFORM_TESTS_ONLY, ctest -L "platform|kernels").
-          # Linux arm64 runs every test: macOS was the only arm64 (NEON) run on every push.
-          - { name: "Linux x86_64", os: ubuntu-24.04, subset: false }
-          - { name: "Linux arm64", os: ubuntu-24.04-arm, subset: false }
-          - { name: "macOS arm64", os: macos-15, subset: true }
-    env:
-      SUBSET_CMAKE: ${{ matrix.subset && '-DDECT2_PLATFORM_TESTS_ONLY=ON' || '' }}
-      SUBSET_LABELS: ${{ matrix.subset && 'platform|kernels' || '' }}
+          # tests: the labels of tests/platform_tests.txt it builds and runs (DECT2_TESTS_ONLY, ctest -L)
+          - { name: "Linux x86_64", os: ubuntu-24.04, tests: "platform" }
+          - { name: "macOS arm64", os: macos-15, tests: "platform|kernels" }
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies (Linux)
@@ -77,7 +72,7 @@ jobs:
             ccache-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-
             ccache-${{ matrix.os }}-
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache $SUBSET_CMAKE
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=ON "-DDECT2_TESTS_ONLY=${{ matrix.tests }}" -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - name: Build
         run: cmake --build build -j 4
       - name: ccache statistics
@@ -86,7 +81,7 @@ jobs:
       # the socket / thread timing tests (label "timing") on their own, two at a time, a failed one run once more: beside a -j 4 run they
       # measured the runner's load. (A retry step after a failed test step never ran: a step only runs when the ones before it passed.)
       - name: Test (fast tests)
-        run: ctest --test-dir build -j 4 ${SUBSET_LABELS:+-L "$SUBSET_LABELS"} -LE "slow|timing" --output-on-failure --timeout 600 --output-log ctest-fast.log
+        run: ctest --test-dir build -j 4 -L "${{ matrix.tests }}" -LE "slow|timing" --output-on-failure --timeout 600 --output-log ctest-fast.log
       - name: Test (timing tests, a failure retried once)
         if: success() || failure()
         run: ctest --test-dir build -j 2 -L timing -LE slow --repeat until-pass:2 --output-on-failure --timeout 600 --output-log ctest-timing.log
@@ -100,7 +95,7 @@ jobs:
       # The app on Mesa's software OpenGL held to 3.1 and a 4096 texture limit, as on a Raspberry Pi 4/5 (#283, #284): it must open,
       # draw a frame and make no GL errors.
       - name: "App: OpenGL 3.1 software run (Raspberry Pi limits)"
-        if: runner.os == 'Linux' && runner.arch == 'X64'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y xvfb libgl1-mesa-dri
           set +e
@@ -111,15 +106,13 @@ jobs:
           [ -f "$GITHUB_WORKSPACE/shot-gl31.png" ] || { echo "no frame drawn"; exit 1; }
           if grep -q 'Mesa: error\|GL_INVALID' gl31.log; then echo "OpenGL errors"; exit 1; fi
       - uses: actions/upload-artifact@v7
-        if: always() && runner.os == 'Linux' && runner.arch == 'X64'
+        if: always() && runner.os == 'Linux'
         with: { name: linux-gl31-shot, path: "shot-gl31.png\ngl31.log", if-no-files-found: ignore }
 
   windows:
     name: Windows x64 (MinGW-w64)
     runs-on: windows-2022
     defaults: { run: { shell: 'msys2 {0}' } }
-    env:   # only the platform/kernels tests, as on macOS (see the top of this file)
-      SUBSET_LABELS: "platform|kernels"
     steps:
       - uses: actions/checkout@v7
       - uses: msys2/setup-msys2@v2
@@ -136,9 +129,9 @@ jobs:
           restore-keys: |
             ccache-windows-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-
             ccache-windows-
-      - name: Configure and build (app, tools, platform/kernels tests)
+      - name: Configure and build (app, tools, tests)
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=ON -DDECT2_PLATFORM_TESTS_ONLY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j 4
       - name: ccache statistics
         if: always()
@@ -146,7 +139,7 @@ jobs:
       # the socket / thread timing tests (label "timing") on their own, two at a time, a failed one run once more: beside a -j 4 run they
       # measured the runner's load. (A retry step after a failed test step never ran: a step only runs when the ones before it passed.)
       - name: Test (fast tests)
-        run: ctest --test-dir build -j 4 ${SUBSET_LABELS:+-L "$SUBSET_LABELS"} -LE "slow|timing" --output-on-failure --timeout 600 --output-log ctest-fast.log
+        run: ctest --test-dir build -j 4 -LE "slow|timing" --output-on-failure --timeout 600 --output-log ctest-fast.log
       - name: Test (timing tests, a failure retried once)
         if: success() || failure()
         run: ctest --test-dir build -j 2 -L timing -LE slow --repeat until-pass:2 --output-on-failure --timeout 600 --output-log ctest-timing.log

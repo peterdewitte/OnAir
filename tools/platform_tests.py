@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Lists the tests that are worth running on Windows and macOS on every push, for tests/platform_tests.txt.
+"""Lists the tests whose code differs per OS, for tests/platform_tests.txt.
 
-Most tests check decoders and DSP: the same C++ on every OS, already run on Linux on every push. Running them
-again on Windows and macOS mostly costs time (about 1h40 of tests and 2h20 of building on the Windows runner).
-Two kinds of test do differ per OS, and these are listed:
+Windows builds and runs every quick test on every push (ci.yml). Most of them check decoders and DSP: the same C++
+on every OS, so Linux and macOS only build and run the tests listed here:
 
   platform  the test or the code it covers talks to the OS: sockets, files and folders, settings and data paths,
             loading libraries and plug-ins, processes, audio, GUI/OpenGL, local time, #ifdef _WIN32 / __APPLE__
             code; and every socket/thread timing test (label "timing")
   kernels   SIMD / FFT / FEC kernels: another instruction set (NEON on arm64), Accelerate on macOS, the Windows
-            x64 calling convention (stack alignment of the AVX2 code, #324)
+            x64 calling convention (stack alignment of the AVX2 code, #324); macOS runs these, Linux x86_64 not (the
+            same x86-64 kernels as on Windows)
 
-Every other test still builds and runs on Windows and macOS in the nightly Full CI (ci-full.yml).
+macOS arm64 runs every quick test nightly in the Full CI (ci-full.yml): the decoders as Clang builds them on arm64.
 
 Run after adding tests (from a configured build directory, the tests need not be built):
     python3 tools/platform_tests.py build > tests/platform_tests.txt
@@ -115,8 +115,8 @@ def main():
         if name not in listed:
             rows.append(("platform", name, target, why))
 
-    print("# Tests that run on Windows and macOS on every push (ci.yml, ctest -L \"platform|kernels\"): the ones whose")
-    print("# code differs per OS. Linux runs every test on every push, Windows and macOS run the rest nightly (ci-full.yml).")
+    print("# The tests whose code differs per OS. On every push (ci.yml) Windows runs every test, Linux only the \"platform\"")
+    print("# ones and macOS the \"platform\" and \"kernels\" ones; macOS runs every test nightly (ci-full.yml).")
     print("# Regenerate after adding tests: python3 tools/platform_tests.py build > tests/platform_tests.txt")
     print("# <label> <test> <build target>  # why")
     for label, name, target, why in sorted(rows):

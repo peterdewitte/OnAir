@@ -1,5 +1,5 @@
-# Tests that run on Windows and macOS on every push (ci.yml, ctest -L "platform|kernels"): the ones whose
-# code differs per OS. Linux runs every test on every push, Windows and macOS run the rest nightly (ci-full.yml).
+# The tests whose code differs per OS. On every push (ci.yml) Windows runs every test, Linux only the "platform"
+# ones and macOS the "platform" and "kernels" ones; macOS runs every test nightly (ci-full.yml).
 # Regenerate after adding tests: python3 tools/platform_tests.py build > tests/platform_tests.txt
 # <label> <test> <build target>  # why
 kernels atsc3_ldpc test_atsc3_ldpc  # kernel name
