@@ -21,6 +21,7 @@ Rust is required (cargo and rustc 1.70 or newer; `rustup target add <triple>` fo
 - Keep a change focused, and explain **why** in the description. Small pull requests get reviewed faster.
 - The build must pass on every system in the CI (Linux x86-64 and arm64, macOS Apple silicon and Intel, Windows). Keep system-specific code behind `#ifdef __APPLE__` / `_WIN32` and in the platform files.
 - Add or extend a test when you change the receiver, the error correction or the player logic. The generators in the library make most tests possible without a radio.
+- On every push, Windows and macOS only build and run the tests whose code differs per OS (labels `platform` and `kernels`, listed in `tests/platform_tests.txt`); Linux runs them all. After adding a test that uses files, sockets, paths, libraries, processes, audio or `#ifdef _WIN32` / `__APPLE__` code, regenerate the list: `python3 tools/platform_tests.py build > tests/platform_tests.txt`.
 - Do not change the decoded output of the receiver unless that is the point of the change. The tests compare it. The Rust-backed layers have golden-vector tests (`tests/<mode>/test_<mode>_proto_rs.cpp`): when a change of a Rust function changes the digest on purpose, update the value in the test and say why in the commit message. Do not leave a replaced C++ implementation behind an `#ifdef`; delete it (`rust/README.md` says how to add a module).
 - Match the style around you: short comments that say why, no large reformatting of lines you did not change.
 - Say how you tested it, and on which system and radio.

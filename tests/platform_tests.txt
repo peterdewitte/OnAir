@@ -1,0 +1,255 @@
+# Tests that run on Windows and macOS on every push (ci.yml, ctest -L "platform|kernels"): the ones whose
+# code differs per OS. Linux runs every test on every push, Windows and macOS run the rest nightly (ci-full.yml).
+# Regenerate after adding tests: python3 tools/platform_tests.py build > tests/platform_tests.txt
+# <label> <test> <build target>  # why
+kernels atsc3_ldpc test_atsc3_ldpc  # kernel name
+kernels bandwidth test_bandwidth  # area dsp
+kernels cic3 test_cic3  # area dsp
+kernels direction test_direction  # area dsp
+kernels diversity test_diversity  # area dsp
+kernels dji_resampler test_dji_resampler  # area dsp
+kernels dsp test_dsp  # area dsp
+kernels dtmb_fft test_dtmb_fft  # kernel name
+kernels exact_resampler test_exact_resampler  # area dsp
+kernels fec test_fec  # area t2
+kernels fec_proto_rs test_fec_proto_rs  # area fec
+kernels fft_bits test_fft_bits  # area dsp
+kernels fuzz_fec_proto fuzz_fec_proto  # area fec
+kernels gpu_ldpc_exact test_gpu_ldpc_exact  # area dsp
+kernels hrpt_viterbi test_hrpt_viterbi  # kernel name
+kernels imgproc test_imgproc  # area dsp
+kernels iono_dechirp test_iono_dechirp  # area dsp
+kernels iq_correct test_iq_correct  # area dsp
+kernels kris_ldpc test_kris_ldpc  # kernel name
+kernels l1 test_l1  # area t2
+kernels latest_slot test_latest_slot  # area dsp
+kernels noise_blanker test_noise_blanker  # area dsp
+kernels pilots test_pilots  # area t2
+kernels spectrum_fastlog test_spectrum_fastlog  # area dsp
+kernels spectrum_fastrows test_spectrum_fastrows  # area dsp
+kernels spectrum_threads test_spectrum_threads  # area dsp
+kernels spur_notch test_spur_notch  # area dsp
+kernels synth_wide test_synth_wide  # area dsp
+kernels t2mi_out test_t2mi_out  # area t2
+kernels up6 test_up6  # area dsp
+kernels viterbi8_ber test_viterbi8_ber  # area fec
+kernels viterbi_gpu test_viterbi_gpu  # area fec
+kernels viterbi_simd test_viterbi_simd  # area fec
+kernels wxstudio test_wxstudio  # area dsp
+platform ac4 test_ac4  # area audio
+platform adc_bits test_adc_bits  # area source
+platform agc test_agc  # area source
+platform agc_burst test_agc_burst  # area source
+platform ais_engine test_ais_engine  # timing
+platform antenna_ports test_antenna_ports  # area source
+platform api_policy test_api_policy  # area net
+platform aprs_gate test_aprs_gate  # area net
+platform asterix_engine test_asterix_engine  # timing
+platform atsc3_synth_basic test_atsc3_synth_basic  # timing
+platform atv_switch test_atv_switch  # timing
+platform audio test_audio  # area audio
+platform audio_cleanup test_audio_cleanup  # area audio
+platform audio_control test_audio_control  # area audio
+platform audio_engine test_audio_engine  # area audio
+platform audio_if test_audio_if  # area audio
+platform audio_levels test_audio_levels  # area audio
+platform audio_monitor test_audio_monitor  # area audio
+platform audio_rec test_audio_rec  # area audio
+platform audio_source test_audio_source  # area audio
+platform autogain test_autogain  # area source
+platform autogain_models test_autogain_models  # area source
+platform autogain_smart test_autogain_smart  # area source
+platform autogain_v2 test_autogain_v2  # area source
+platform backup test_backup  # area backup
+platform bench_modes_smoke bench_modes  # os_ifdef, process, text_fopen
+platform bluefile test_bluefile  # area source
+platform cdr_audio test_cdr_audio  # audio_dev
+platform cdr_dra_addon test_cdr_dra_addon  # os_ifdef, audio_dev
+platform channelizer_mix test_channelizer_mix  # os_ifdef, accelerate
+platform chosen_rate_reaches_radio test_chosen_rate_reaches_radio  # area engine
+platform cleanup_neural test_cleanup_neural  # area audio
+platform click_tune test_click_tune  # area source
+platform codec_arch test_codec_arch  # area codec
+platform codec_guard test_codec_guard  # area codec
+platform codec_paths test_codec_paths  # area codec
+platform conceal test_conceal  # os_ifdef
+platform converter test_converter  # area source
+platform crash_report test_crash_report  # area engine
+platform custom_capture test_custom_capture  # area engine
+platform cw_morse test_cw_morse  # os_ifdef
+platform datasets test_datasets  # area packs
+platform decode_shift test_decode_shift  # area engine
+platform delivery_check test_delivery_check  # area source
+platform device_pick test_device_pick  # area source
+platform df test_df  # text_fopen
+platform discord_rpc test_discord_rpc  # timing
+platform diversity_source test_diversity_source  # area source
+platform dmr_listen test_dmr_listen  # os_ifdef
+platform dmr_plugin test_dmr_plugin  # os_ifdef
+platform dmr_voice test_dmr_voice  # os_ifdef
+platform dmr_wide_threads test_dmr_wide_threads  # os_ifdef
+platform drm_xhe_lib test_drm_xhe_lib  # os_ifdef, text_fopen
+platform dtmb_engine test_dtmb_engine  # timing
+platform dtmb_longrun test_dtmb_longrun  # os_ifdef
+platform dual_engine test_dual_engine  # area engine
+platform dvbc_engine test_dvbc_engine  # timing
+platform dvbs_engine test_dvbs_engine  # timing
+platform dvbsi_proto_rs test_dvbsi_proto_rs  # os_ifdef
+platform dxpatrol test_dxpatrol  # area source
+platform ebicab_engine test_ebicab_engine  # timing
+platform eczas_wav test_eczas_wav  # os_ifdef, local_time
+platform exporters test_exporters  # area export
+platform family_mask test_family_mask  # area session
+platform feed_targets test_feed_targets  # area net
+platform feeds test_feeds  # area net
+platform fuzz_net_proto fuzz_net_proto  # area net
+platform gain_opt test_gain_opt  # area source
+platform halow_engine test_halow_engine  # timing
+platform ham_core test_ham_core  # env_paths
+platform hamlib_rig test_hamlib_rig  # area source
+platform hdr_hdc test_hdr_hdc  # os_ifdef
+platform hdr_hdc_rx test_hdr_hdc_rx  # os_ifdef
+platform hfdig_codec2bundle test_hfdig_codec2bundle  # os_ifdef, process
+platform hfdig_codecnames test_hfdig_codecnames  # os_ifdef
+platform hfdig_ftxmulti test_hfdig_ftxmulti  # os_ifdef
+platform hfdig_mbbench test_hfdig_mbbench  # os_ifdef
+platform hfdl_weak test_hfdl_weak  # os_ifdef
+platform icom_r8600 test_icom_r8600  # area source
+platform inmc_engine test_inmc_engine  # timing
+platform inmsat_live test_inmsat_live  # os_ifdef, dynlib, text_fopen, env_paths
+platform integrations test_integrations  # area integrations
+platform iono_engine test_iono_engine  # timing
+platform iq_record test_iq_record  # area source
+platform iridium_bits test_iridium_bits  # os_ifdef
+platform isdbt_rx test_isdbt_rx  # timing
+platform kaft_engine test_kaft_engine  # timing
+platform kavb_iqfile test_kavb_iqfile  # text_fopen, env_paths
+platform lbj_real test_lbj_real  # env_paths
+platform limesdr_mini test_limesdr_mini  # area source
+platform map_guard test_map_guard  # area net
+platform marine_engine test_marine_engine  # timing
+platform mbe_abi_classic test_mbe_abi  # area codec
+platform mbe_abi_neo test_mbe_abi  # area codec
+platform mcp test_mcp  # area mcp
+platform memory_recall_app dect2  # a hidden window run of the app, macOS and Windows only
+platform mesh_rates test_mesh_rates  # timing
+platform modes_rate_choice test_rate_choice  # area engine
+platform mount test_mount  # area source
+platform multi_rx test_multi_rx  # area engine
+platform multitone_engine test_multitone_engine  # timing
+platform multitv test_multitv  # area engine
+platform multitv_engine test_multitv_engine  # area engine
+platform multitv_sat test_multitv_sat  # area engine
+platform multitv_wide test_multitv_wide  # area engine
+platform native_kiwisdr test_kiwisdr  # area source
+platform native_lifecycle test_native_lifecycle  # area source
+platform native_netradio test_netradio  # area net
+platform native_nobias test_native  # area source
+platform native_nrspst test_nrspst  # area source
+platform native_pluto_probe test_pluto_probe  # area source
+platform native_sdrpp test_sdrpp  # area net
+platform native_tci test_tci  # area source
+platform net_proto_rs test_net_proto_rs  # area net
+platform neural_nr test_neural_nr  # area audio
+platform offset_tune test_offset_tune  # area source
+platform p25_plugin test_p25_plugin  # os_ifdef
+platform p25_vocoder test_p25_vocoder  # os_ifdef
+platform p25p2_plugin test_p25p2_plugin  # os_ifdef
+platform packs test_packs  # area packs
+platform pactor_proto test_pactor_proto  # text_fopen
+platform plugin test_plugin  # area plugin
+platform pluto_duplex test_pluto_duplex  # area source
+platform power_idle test_power_idle  # area power
+platform presets test_presets  # area presets
+platform privacy test_privacy  # area session
+platform protolab test_protolab  # timing
+platform pskreporter test_pskreporter  # area net
+platform qo100_dvbs_second test_qo100_dvbs_second  # timing
+platform radio_mode_glue test_radio_mode_glue  # area engine
+platform record_rules test_record_rules  # area session
+platform redpitaya_gain test_redpitaya_gain  # area net
+platform remote_api test_remote_api  # area net
+platform replay test_replay  # area source
+platform results_export test_results_export  # area results
+platform rig_control test_rig_control  # area source
+platform rig_setup test_rig_setup  # area source
+platform rooms_net test_rooms_net  # timing
+platform rx888 test_rx888  # area source
+platform scan_plan test_scan_plan  # area engine
+platform scan_radios test_scan_radios  # area engine
+platform scan_soapy test_scan_soapy  # area engine
+platform scan_synth test_scan_synth  # area engine
+platform scanner test_scanner  # area engine
+platform sdrplay test_sdrplay  # area source
+platform sdrplay_ifbw test_sdrplay_ifbw  # area source
+platform secondary_modes test_secondary_modes  # area engine
+platform server_host test_server_host  # area server
+platform session_autorec test_session_autorec  # area session
+platform session_bench bench_session_db  # area session
+platform session_crash test_session_crash  # area session
+platform session_db test_session_db  # area session
+platform session_events test_session_events  # area session
+platform session_model test_session_model  # area session
+platform session_modes test_session_modes  # area session
+platform session_retention test_session_retention  # area session
+platform session_soak_short soak_session_writer  # area session
+platform session_store_threads test_session_store_threads  # area session
+platform session_voice_bridge test_session_voice_bridge  # area session
+platform sigmf test_sigmf  # area source
+platform soapy test_soapy  # area source
+platform soapy_logic test_soapy_logic  # area source
+platform speech_codec test_speech_codec  # area codec
+platform stream_watchdog test_stream_watchdog  # area source
+platform swarm test_swarm  # area net
+platform swarm_ctl test_swarm_ctl  # area net
+platform sync test_sync  # os_ifdef
+platform text_select test_text_select  # gui
+platform thread_name test_thread_name  # os_ifdef
+platform time_burst test_time_burst  # area time
+platform time_engine test_time_engine  # area time
+platform time_machine test_time_machine  # area source
+platform time_msglog test_time_msglog  # os_ifdef, local_time
+platform time_ntp test_time_ntp  # area time
+platform time_proto test_time_proto  # area time
+platform time_rwm test_time_rwm  # area time
+platform time_rx test_time_rx  # area time
+platform transcribe test_transcribe  # area transcribe
+platform transcribe_speech test_transcribe_speech  # area transcribe
+platform transponders test_transponders  # area engine
+platform tsout_udp test_tsout_udp  # os_ifdef, net
+platform tv_dra test_tv_dra  # os_ifdef
+platform tx test_tx  # timing
+platform tx_quality_a test_tx_quality_a  # os_ifdef
+platform tx_quality_a_rt test_tx_quality_a  # timing
+platform tx_quality_b test_tx_quality_b  # timing
+platform tx_rate test_tx_rate  # area source
+platform typography test_typography  # gui
+platform updater test_updater  # area engine
+platform updater_mirror test_updater_mirror  # area engine
+platform usb_fd test_usb_fd  # area source
+platform usb_fd_open test_usb_fd_open  # area source
+platform vfo test_vfo  # area engine
+platform videogen test_videogen  # os_ifdef, net
+platform voice_inversion test_voice_inversion  # area audio
+platform web_decoders test_web_decoders  # area server
+platform web_directory test_web_directory  # area server
+platform web_dsp test_web_dsp  # area server
+platform web_hub test_web_hub  # area server
+platform web_proto test_web_proto  # area server
+platform web_ranges test_web_ranges  # area server
+platform web_relay test_web_relay  # area server
+platform web_safety test_web_safety  # area server
+platform web_server test_web_server  # area server
+platform web_tx_guard test_web_tx_guard  # area server
+platform webshare test_webshare  # area webshare
+platform webshare_core test_webshare_core  # area webshare
+platform whisper_model test_whisper_model  # area transcribe
+platform wide_bank_audio test_wide_bank_audio  # area engine
+platform wide_detector test_wide_detector  # area engine
+platform wide_multi test_wide_multi  # area engine
+platform wide_multi_tv test_wide_multi_tv  # area engine
+platform wide_session test_wide_session  # area engine
+platform wide_session_tv test_wide_session_tv  # area engine
+platform wifi_engine test_wifi_engine  # timing
+platform wisun_engine test_wisun_engine  # timing
+platform wsprnet test_wsprnet  # area net

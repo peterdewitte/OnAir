@@ -5,7 +5,7 @@ name: Full CI
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 2 * * *"   # nightly: only the slow tier (ctest -L slow)
+    - cron: "17 2 * * *"   # nightly: the slow tier (ctest -L slow), and the quick tier on Windows and macOS arm64 (see below)
 
 # ccache as in ci.yml (see the comment there for the cache keys); one cache per job/matrix entry.
 env:
@@ -29,6 +29,9 @@ jobs:
           - { name: "macOS arm64", os: macos-15, extra: "" }
           - { name: "macOS Intel (x86_64)", os: macos-15-intel, extra: "" }
           - { name: "macOS arm64 (portable DSP, no SIMD)", os: macos-15, extra: "-DDECT2_PORTABLE=ON -DDECT2_NO_SIMD=ON" }
+          # the quick tier (ctest -LE slow): on every push macOS only runs the platform/kernels tests (ci.yml), so the others run
+          # here, once a day; a job of its own, the slow tier alone already fills the 6 h a job may run (keep it last: the ccache key uses the index)
+          - { name: "macOS arm64 (quick tier)", os: macos-15, extra: "", tier: quick }
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies (Linux)
@@ -54,11 +57,17 @@ jobs:
         if: always()
         run: ccache -s
       - name: Test
-        run: ctest --test-dir build -j 4 ${{ github.event_name == 'schedule' && '-L slow' || '' }} --output-on-failure --timeout 1500
+        run: ctest --test-dir build -j 4 ${{ matrix.tier == 'quick' && '-LE slow' || (github.event_name == 'schedule' && '-L slow' || '') }} --output-on-failure --timeout 1500
 
+  # two jobs: the slow tier, and the quick tier that ci.yml no longer runs on Windows (only its platform/kernels tests);
+  # together they used to be one job, which ran into the 6 h limit
   windows:
-    name: Windows x64 (MinGW-w64)
+    name: Windows x64 (MinGW-w64, ${{ matrix.tier }} tier)
     runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [slow, quick]
     defaults: { run: { shell: 'msys2 {0}' } }
     steps:
       - uses: actions/checkout@v7
@@ -72,9 +81,9 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: .ccache
-          key: ccache-full-windows-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-${{ github.sha }}
+          key: ccache-full-windows-${{ matrix.tier }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-${{ github.sha }}
           restore-keys: |
-            ccache-full-windows-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-
+            ccache-full-windows-${{ matrix.tier }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}-
             ccache-full-windows-
       - name: Configure and build (app, tools, tests)
         run: |
@@ -84,7 +93,7 @@ jobs:
         if: always()
         run: ccache -s
       - name: Test
-        run: ctest --test-dir build -j 4 ${{ github.event_name == 'schedule' && '-L slow' || '' }} --output-on-failure --timeout 1500
+        run: ctest --test-dir build -j 4 ${{ matrix.tier == 'quick' && '-LE slow' || '-L slow' }} --output-on-failure --timeout 1500
 
   app:
     name: GUI (${{ matrix.name }})
