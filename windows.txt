@@ -1,0 +1,77 @@
+OnAir on Windows: the app only (no tests), with MSYS2's full GPL FFmpeg, in MSYS2 UCRT64 (Ninja)
+=================================================================================================
+
+The script windows_build.sh (next to this file) runs all of these steps, with a green line before each one:
+    bash ~/OnAir/windows_build.sh
+This file lists the same commands, to run them by hand or to see what a failed step does.
+
+Run everything in the "MSYS2 UCRT64" shell (not MSYS, not MINGW64: MINGW64 has no hackrf and soapysdr packages).
+The FFmpeg is MSYS2's own: GPLv3, about 40 codec libraries (x264, x265, SVT-AV1, AOM, VP9 ...), NVENC / AMF / QSV /
+Media Foundation, DirectShow cameras, built by MSYS2 against exactly the library versions pacman installs.
+The result is GPLv3: fine for your own use; it is not the LGPL build the OnAir releases ship.
+
+
+0. First, and now and then: update MSYS2 (by hand, not in the script)
+----------------------------------------------------------------------
+
+pacman -Syu
+#   -S install from the repositories, -y fetch the newest package lists, -u upgrade every installed package.
+#   When MSYS2's core is updated it closes the shell: open UCRT64 again and run pacman -Syu once more, until nothing is left.
+#   A new MSYS2 install is always behind: new packages on an outdated MSYS2 give library version errors.
+
+
+1. Install the packages
+-----------------------
+
+pacman -S --needed --noconfirm git mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,pkgconf,ccache,rust}   # build tools
+pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-{glfw,hackrf,soapysdr,libiconv}            # OnAir's libraries
+pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-ffmpeg                                      # FFmpeg + all its codec libraries
+#   rust: the Rust workspace rust/ of OnAir is mandatory (cmake/OnairRust.cmake)
+
+
+2. Check that FFmpeg is the full GPL build
+------------------------------------------
+
+/ucrt64/bin/ffmpeg.exe -hide_banner -version | head -n1
+/ucrt64/bin/ffmpeg.exe -hide_banner -buildconf | grep -E -- '--enable-(gpl|version3)'          # both must be there
+/ucrt64/bin/ffmpeg.exe -hide_banner -encoders | grep -E ' (libx264|libx265|libsvtav1|h264_nvenc|hevc_nvenc|h264_amf|h264_qsv|h264_mf) '
+/ucrt64/bin/ffmpeg.exe -hide_banner -devices | grep dshow                                       # the cameras
+#   A hardware encoder in this list still needs its graphics card and driver to work (NVENC: NVIDIA, AMF: AMD, QSV: Intel).
+
+
+3. Configure OnAir (only configures, compiles nothing)
+------------------------------------------------------
+
+cd ~/OnAir
+cmake --fresh -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=ON -DDECT2_BUILD_TESTS=OFF \
+      -DDECT2_COPY_RUNTIME_DLLS=ON \
+      -DDECT2_WIN_AVX2=ON -DCMAKE_CXX_FLAGS="-march=native" -DCMAKE_C_FLAGS="-march=native"
+
+#   DECT2_BUILD_APP=ON              the GUI app
+#   DECT2_BUILD_TESTS=OFF           no tests, tools or benchmarks
+#   DECT2_COPY_RUNTIME_DLLS=ON      copies the DLLs of MSYS2's bin next to the .exe
+#   DECT2_WIN_AVX2 / -march=native  fast build for THIS computer only; leave all three out (script: NATIVE=0) for any x86-64 PC
+#   no DECT2_FFMPEG_PREFIX          MSYS2's FFmpeg is used
+#   --fresh: a clean configure (a changed CMakeLists.txt is picked up).
+#   CMake says the generator differs: build/ was made with Makefiles; delete it and configure again.
+
+
+4. Build only the app, then put FFmpeg's DLLs next to it
+---------------------------------------------------------
+
+cmake --build build -j8 --target dect2          # build/dect2.exe (the first build also compiles the Rust crates: needs the internet)
+
+# FFmpeg's DLLs and the DLLs they need (libx264, libx265, ...), so dect2.exe also starts outside MSYS2
+# (inside the UCRT64 shell it finds them in /ucrt64/bin anyway)
+collect() { { ldd "$1" || true; } | awk 'index($3, "/ucrt64/") == 1 {print $3}' | while read -r d; do
+  [ -f "build/$(basename "$d")" ] || { cp "$d" build/; collect "$d"; }; done; }
+for f in /ucrt64/bin/{avutil,swresample,swscale,avcodec,avformat,avdevice,avfilter}-*.dll; do
+  [ -f "build/$(basename "$f")" ] || cp "$f" build/; collect "$f"; done
+
+./build/dect2.exe                                # start it
+
+
+From WSL (instead of opening the UCRT64 shell)
+----------------------------------------------
+
+/mnt/c/msys64/usr/bin/env.exe MSYSTEM=UCRT64 CHERE_INVOKING=1 /usr/bin/bash -lc 'bash ~/OnAir/windows_build.sh'
