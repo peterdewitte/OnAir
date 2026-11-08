@@ -3,6 +3,7 @@
 #include "dect2/dvbs/dvbs_ip.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 namespace dect2 {
