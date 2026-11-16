@@ -2,8 +2,10 @@
 // Copyright (C) 2026 Kristijonas Adomaitis and OnAir contributors
 
 // FX.25 and IL2P receive: blocks built by this test's encoder following the tag table and spec, with byte errors up to the code's limit, inverted level for IL2P, and false-sync noise. Simulated bits only.
+// FX.25 also through the FX.25 encoder (fx25Bits) and NRZI, next to a plain AX.25 receiver.
 #include "dect2/packet/packet_ax25.h"
 #include "dect2/packet/packet_fec.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <random>
@@ -53,7 +55,7 @@ static void fx25Test() {
         for (int e = 0; e < put; e++) air[(size_t)e * 7 % (size_t)n] ^= (uint8_t)(0x55 + e);
         PacketFecRx rx;
         std::vector<uint8_t> got; int rep = -1;
-        rx.setSink([&](const std::vector<uint8_t>& f, int r, bool il) { CHECK(!il); got = f; rep = r; });
+        rx.setSink([&](const PacketFecFrame& f) { CHECK(!f.il2p); got = f.ax25; rep = f.repaired; });
         int level = 0;
         for (int i = 0; i < 64; i++) { const int b = (int)((v >> i) & 1); level = b ? level : !level; rx.lineBit(level, false); }
         for (uint8_t by : air) for (int b = 0; b < 8; b++) { const int d1 = (by >> b) & 1; level = d1 ? level : !level; rx.lineBit(level, false); }
@@ -107,7 +109,7 @@ static void il2pTest() {
         auto bytes = il2pBytes(payload, eh, ep);
         PacketFecRx rx;
         std::vector<uint8_t> got; bool isIl = false;
-        rx.setSink([&](const std::vector<uint8_t>& f, int, bool il) { got = f; isIl = il; });
+        rx.setSink([&](const PacketFecFrame& f) { got = f.ax25; isIl = f.il2p; });
         std::mt19937 g(1);
         for (int i = 0; i < 80; i++) rx.lineBit((int)(g() & 1) ^ inv, true);   // junk before the sync
         for (uint8_t b : bytes) for (int i = 7; i >= 0; i--) rx.lineBit(((b >> i) & 1) ^ inv, true);
@@ -124,9 +126,78 @@ static void il2pTest() {
     }
 }
 
+static std::vector<uint8_t> ax25Ui(const std::string& info, bool withPath = false) {
+    ax25::Frame f;
+    f.to.call = "APRS"; f.to.h = true; f.from.call = "N0CALL"; f.from.ssid = 1;   // an AX.25 v2 command, as IL2P Type 1 gives it back
+    if (withPath) { ax25::Address a; a.call = "WIDE2"; a.ssid = 2; f.path.push_back(a); }
+    f.info = info;
+    std::vector<uint8_t> b = ax25::buildFrame(f);
+    b.resize(b.size() - 2);
+    return b;
+}
+
+// FX.25 encoder -> NRZI -> receiver, with byte errors in the block; a plain AX.25 receiver reads the same frame
+static void fx25RoundTrips() {
+    for (const std::string& info : {std::string(">short"), std::string(60, 'm'), std::string(180, 'L')}) {
+        const std::vector<uint8_t> fr = ax25Ui(info);
+        std::vector<uint8_t> fwf = fr;
+        ax25::appendFcs(fwf);
+        for (int check : {0, 16, 32, 64}) {
+            const std::vector<uint8_t> bits = fx25Bits(fwf, check, 4, 2);
+            if (bits.empty()) { CHECK(info.size() > 100 && check != 0); continue; }   // the long frame does not fit some families' blocks
+            const size_t start = 4 * 8 + 64, blockBytes = (bits.size() - 6 * 8 - 64) / 8;
+            const int maxErr = check == 64 ? 32 : check == 32 ? 16 : 8;
+            for (int errs : {0, 1, 8}) {
+                if (errs > maxErr) continue;
+                std::vector<uint8_t> b = bits;
+                for (int e = 0; e < errs; e++) { const size_t byte = (size_t)e * 13 % blockBytes; b[start + byte * 8 + 3] ^= 1; }
+                const std::vector<uint8_t> lv = ax25::nrziEncode(b);
+                PacketFecRx rx;
+                std::vector<PacketFecFrame> got;
+                rx.setSink([&](const PacketFecFrame& f) { got.push_back(f); });
+                std::vector<uint8_t> plain;
+                ax25::HdlcRx h([&](const std::vector<uint8_t>& d, bool ok) { if (ok) plain = d; });
+                for (uint8_t l : lv) { rx.lineBit(l, false); h.bit(l); }
+                CHECK(got.size() == 1);
+                if (got.size() == 1) { CHECK(got[0].ax25 == fr); CHECK(got[0].repaired == errs); CHECK(!got[0].il2p); CHECK(got[0].lateBits > 0); }
+                if (errs == 0) CHECK(plain == fr);
+            }
+        }
+    }
+    CHECK(fx25PickTag(0, 20) == 4);
+    CHECK(fx25PickTag(0, 100) == 6);
+    CHECK(fx25PickTag(16, 100) == 2);
+    CHECK(fx25PickTag(0, 240) == 0);
+}
+
+// a block whose decoder "repairs" the bytes that are never sent (zeros between the data and the check bytes) is not a frame
+static void fx25NeverSent() {
+    std::vector<uint8_t> fr = ax25Ui(">short");
+    ax25::appendFcs(fr);
+    const std::vector<uint8_t> bits = fx25Bits(fr, 0, 2, 2);
+    CHECK(!bits.empty());
+    // a clean block decodes; then the same block with its parity replaced by that of a block with a byte in the unsent zeros: nothing
+    uint64_t v; int n = 0, k = 0;
+    CHECK(fx25Tag(fx25PickTag(0, 20), v, n, k));
+    std::vector<uint8_t> full((size_t)(255 - (n - k)), 0);
+    for (int i = 0; i < k; i++) for (int b = 0; b < 8; b++) full[(size_t)i] |= (uint8_t)(bits[(size_t)(2 * 8 + 64 + i * 8 + b)] << b);
+    full[(size_t)k + 3] = 0x5A;
+    std::vector<uint8_t> par((size_t)(n - k));
+    rsEncodeParity(full.data(), (int)full.size(), n - k, 1, par.data());
+    std::vector<uint8_t> b = bits;
+    for (int i = 0; i < n - k; i++) for (int j = 0; j < 8; j++) b[(size_t)(2 * 8 + 64 + (k + i) * 8 + j)] = (uint8_t)((par[(size_t)i] >> j) & 1);
+    PacketFecRx rx;
+    int got = 0;
+    rx.setSink([&](const PacketFecFrame&) { got++; });
+    for (uint8_t l : ax25::nrziEncode(b)) rx.lineBit(l, false);
+    CHECK(got == 0);
+}
+
 int main() {
     fx25Test();
+    fx25RoundTrips();
+    fx25NeverSent();
     il2pTest();
-    { PacketFecRx rx; int n = 0; rx.setSink([&](const std::vector<uint8_t>&, int, bool) { n++; }); std::mt19937 g(3); for (int i = 0; i < 200000; i++) rx.lineBit((int)(g() & 1), true); CHECK(n == 0); }
+    { PacketFecRx rx; int n = 0; rx.setSink([&](const PacketFecFrame&) { n++; }); std::mt19937 g(3); for (int i = 0; i < 200000; i++) rx.lineBit((int)(g() & 1), true); CHECK(n == 0); }
     return testSummary("packet_fec");
 }

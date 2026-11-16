@@ -3632,3 +3632,4 @@ Default	По умолчанию
 Custom	Своё
 Join the Discord to get access to built codecs	Присоединяйтесь к Discord, чтобы получить готовые кодеки
 Opens the OnAir Discord in your browser. OnAir itself never downloads or includes a codec.	Открывает Discord OnAir в браузере. Сам OnAir никогда не скачивает и не содержит кодеков.
+repaired	исправлено

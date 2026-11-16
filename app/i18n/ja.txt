@@ -3642,3 +3642,4 @@ Default	既定
 Custom	カスタム
 Join the Discord to get access to built codecs	Discord に参加してビルド済みコーデックを入手する
 Opens the OnAir Discord in your browser. OnAir itself never downloads or includes a codec.	ブラウザで OnAir の Discord を開きます。OnAir 自身がコーデックをダウンロードしたり同梱したりすることはありません。
+repaired	修復

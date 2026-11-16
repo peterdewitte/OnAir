@@ -538,3 +538,4 @@ Custom remove-after time (minutes)
 Used by every Remove after row set to Custom.
 Join the Discord to get access to built codecs
 Opens the OnAir Discord in your browser. OnAir itself never downloads or includes a codec.
+repaired

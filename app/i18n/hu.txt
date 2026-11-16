@@ -3627,3 +3627,4 @@ Default	Alapértelmezett
 Custom	Egyéni
 Join the Discord to get access to built codecs	Csatlakozz a Discordhoz, hogy hozzáférj az elkészített kodekekhez
 Opens the OnAir Discord in your browser. OnAir itself never downloads or includes a codec.	Megnyitja az OnAir Discordot a böngészőben. Maga az OnAir soha nem tölt le és nem tartalmaz kodeket.
+repaired	javítva

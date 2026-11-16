@@ -6,6 +6,7 @@
 #include "dect2/dsp/gen_util.h"
 #include "dect2/packet/packet_rx.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -124,6 +125,14 @@ std::vector<PacketGenFrame> frames9600() {
     return v;
 }
 
+// The same demo stations with forward error correction: each wrapping at both speeds
+std::vector<PacketGenFrame> framesFec() {
+    std::vector<PacketGenFrame> v;
+    auto add = [&](ax25::Frame f, int baud, PacketFec fec) { PacketGenFrame g; g.frame = std::move(f); g.baud = baud; g.fec = fec; v.push_back(std::move(g)); };
+    add(ui("A61QQ-9", "APRS", {{"WIDE1-1", true}, {"WIDE2-1", false}}, "!2512.34N/05518.12E>123/045/A=000328FX.25 mobile"), 1200, PacketFec::Fx25);
+    return v;
+}
+
 struct Cycle {
     std::vector<PacketGenFrame> frames;
     std::vector<cf32> bb;          // the complex baseband at 96 kHz, unit amplitude while a frame is sent
@@ -177,31 +186,31 @@ Cycle renderCycle(std::vector<PacketGenFrame> frames, double gap1200 = 0.25, dou
     uint32_t scr = 0;
     for (const PacketGenFrame& g : c.frames) {
         const std::vector<uint8_t> bytes = ax25::buildFrame(g.frame);
-        if (g.baud == 1200) {
-            const std::vector<uint8_t> bits = ax25::hdlcBits(bytes, 24, 4);
-            send1200(m, ax25::nrziEncode(bits));
-            if (gap1200 > 0) m.silence(gap1200);
-        } else {
-            const std::vector<uint8_t> bits = ax25::hdlcBits(bytes, 60, 6);
-            send9600(m, ax25::scramble(ax25::nrziEncode(bits), scr));
-            if (gap9600 > 0) m.silence(gap9600);
-        }
+        const bool slow = g.baud == 1200;
+        const int before = slow ? 24 : 60, after = slow ? 4 : 6;   // flags before and after
+        std::vector<uint8_t> bits;
+        if (g.fec == PacketFec::Fx25) bits = packetfec::fx25Bits(bytes, 0, before, after);
+        if (bits.empty()) bits = ax25::hdlcBits(bytes, before, after);
+        if (slow) send1200(m, ax25::nrziEncode(bits)); else send9600(m, ax25::scramble(ax25::nrziEncode(bits), scr));
+        const double gap = slow ? gap1200 : gap9600;
+        if (gap > 0) m.silence(gap);
     }
     if (c.bb.empty()) m.silence(1.0);
     return c;
 }
 
 const Cycle& cycleFor(int mode) {
-    static Cycle cache[3];
-    static bool built[3] = {false, false, false};
-    const int k = mode == 1 ? 1 : mode == 2 ? 2 : 0;
-    if (built[k]) return cache[k];
+    static std::array<Cycle, 4> cache;
+    static std::array<bool, 4> built = {false, false, false, false};
+    const int k = mode >= 1 && mode <= 3 ? mode : 0;
+    if (built[(size_t)k]) return cache[(size_t)k];
     std::vector<PacketGenFrame> f;
-    if (k != 2) { auto a = frames1200(); f.insert(f.end(), a.begin(), a.end()); }
-    if (k != 1) { auto a = frames9600(); f.insert(f.end(), a.begin(), a.end()); }
-    cache[k] = renderCycle(std::move(f));
-    built[k] = true;
-    return cache[k];
+    if (k == 3) f = framesFec();
+    if (k == 0 || k == 1) { auto a = frames1200(); f.insert(f.end(), a.begin(), a.end()); }
+    if (k == 0 || k == 2) { auto a = frames9600(); f.insert(f.end(), a.begin(), a.end()); }
+    cache[(size_t)k] = renderCycle(std::move(f));
+    built[(size_t)k] = true;
+    return cache[(size_t)k];
 }
 
 class PacketSynth : public ModeSynth {
@@ -251,11 +260,12 @@ std::unique_ptr<ModeSynth> makePacketSynth(const SynthConfig& cfg, double sample
     return std::make_unique<PacketSynth>(cfg, sampleRate, Cycle(cycleFor(cfg.modeOpt[0])));
 }
 
-std::unique_ptr<ModeSynth> makePacketSynthFrame(const SynthConfig& cfg, double sampleRate, const ax25::Frame& frame, int baud) {
+std::unique_ptr<ModeSynth> makePacketSynthFrame(const SynthConfig& cfg, double sampleRate, const ax25::Frame& frame, int baud, PacketFec fec) {
     if (sampleRate < packetTuning().minSampleRate - 1) return nullptr;
     PacketGenFrame g;
     g.frame = frame;
     g.baud = baud == 9600 ? 9600 : 1200;
+    g.fec = fec;
     return std::make_unique<PacketSynth>(cfg, sampleRate, renderCycle({std::move(g)}));
 }
 

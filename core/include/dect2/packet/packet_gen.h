@@ -9,10 +9,11 @@
 // centre (plus cfoHz); the cycle is packetGenCycle() with its length packetGenCycleSec().
 //
 // SynthConfig: snrDb = carrier to noise in 25 kHz; cfoHz = carrier offset; modeOpt[0] = 0 both speeds one after the other, 1 only
-// 1200 baud, 2 only 9600 baud.
+// 1200 baud, 2 only 9600 baud, 3 frames with forward error correction (packet_fec.h): FX.25 at 1200 baud.
 #pragma once
 #include "dect2/engine/mode_synth.h"
 #include "packet_ax25.h"
+#include "packet_fec.h"
 #include <memory>
 #include <vector>
 
@@ -21,6 +22,7 @@ namespace dect2 {
 struct PacketGenFrame {
     ax25::Frame frame;
     int baud = 1200;
+    PacketFec fec = PacketFec::None;   // FX.25 around the frame; a frame too long for FX.25's one block goes as plain AX.25
 };
 
 // The frames of one cycle in the order they are sent.
@@ -30,8 +32,8 @@ double packetGenCycleSec(int mode);
 
 std::unique_ptr<ModeSynth> makePacketSynth(const SynthConfig& cfg, double sampleRate);
 
-// One custom AX.25 UI frame (and silence around it), looping. baud 1200 or 9600.
-std::unique_ptr<ModeSynth> makePacketSynthFrame(const SynthConfig& cfg, double sampleRate, const ax25::Frame& frame, int baud);
+// One custom AX.25 UI frame (and silence around it), looping. baud 1200 or 9600; fec: FX.25 around it.
+std::unique_ptr<ModeSynth> makePacketSynthFrame(const SynthConfig& cfg, double sampleRate, const ax25::Frame& frame, int baud, PacketFec fec = PacketFec::None);
 
 // A short burst of frames with interFrameGapSec between them (0 = back-to-back on the air, no idle).
 std::unique_ptr<ModeSynth> makePacketSynthBurst(const SynthConfig& cfg, double sampleRate, const std::vector<PacketGenFrame>& frames, double interFrameGapSec);

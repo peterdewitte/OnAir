@@ -91,7 +91,7 @@ struct PacketReceiver::Impl {
     uint64_t seq = 0;
 
     // results
-    struct Recent { uint64_t h; int64_t t; int baud; };
+    struct Recent { uint64_t h; int64_t t; int baud; int fec; };
     std::deque<Recent> recent;
     struct Fail { int baud; int64_t t; bool carrier; };
     std::deque<Fail> fails;
@@ -133,7 +133,7 @@ struct PacketReceiver::Impl {
         for (int i = 0; i < 3; i++)
             for (size_t k = 0; k < afsk[i].chains.size(); k++) {
                 auto f = std::make_unique<PacketFecRx>();
-                f->setSink([this, i, k](const std::vector<uint8_t>& dat, int, bool) { onRaw(1200, -1, dat, true, afsk[i].pos * 2); });
+                f->setSink([this, i](const PacketFecFrame& fr) { onFec(1200, fr, afsk[i].pos * 2); });
                 PacketFecRx* fp = f.get();
                 afsk[i].chains[k].hdlc.setBitTap([fp](int lv) { fp->lineBit(lv, true); });
                 fec.push_back(std::move(f));
@@ -151,6 +151,7 @@ struct PacketReceiver::Impl {
         audio48.reset(); audio8.reset(); listen.reset(); lp9600[0].reset(); lp9600[1].reset();
         for (auto& a : afsk) a.reset();
         for (auto& a : fsk) a.reset();
+        for (auto& f : fec) f->reset();
         emph.reset();
         nextReport = 0;
         recent.clear(); fails.clear(); cands.clear(); heard.clear();
@@ -170,7 +171,7 @@ struct PacketReceiver::Impl {
         pub.inputRate = fs;
         fillLists(pub);
         pub.seq = ++seq;
-        say("APRS / Packet: listening for 1200 and 9600 baud AX.25");
+        say("APRS / Packet: listening for 1200 and 9600 baud AX.25, FX.25 and IL2P");
     }
 
     void shiftTimes(double dt) {
@@ -253,20 +254,53 @@ struct PacketReceiver::Impl {
         }
     }
 
-    void onRaw(int baud, int variant, const std::vector<uint8_t>& dat, bool ok, int64_t tt, int fixedBits = 0) {
+    // A frame from the FX.25 / IL2P receivers: its time moved back to where the frame itself ended, so that the copy the plain AX.25 receiver
+    // got of an FX.25 frame (which comes earlier, before the padding and the check bytes) is recognised as the same transmission
+    void onFec(int baud, const PacketFecFrame& fr, int64_t tt) {
+        tt -= (int64_t)((double)fr.lateBits * kMidRate / baud);
+        onRaw(baud, -1, fr.ax25, true, tt, 0, fr.il2p ? 2 : 1, fr.repaired);
+    }
+
+    // fec: 0 plain AX.25, 1 FX.25, 2 IL2P (with fecRepaired bytes corrected)
+    void onRaw(int baud, int variant, const std::vector<uint8_t>& dat, bool ok, int64_t tt, int fixedBits = 0, int fec = 0, int fecRepaired = 0) {
         if (!ok) {
             if (variant == 0) fails.push_back({baud, tt, fe.carrierRecent(0.2) && tt - fe.carrierSince > (int64_t)(0.05 * kMidRate)});         // one demodulator counts the failures; another one may still get the frame
             return;
         }
         const uint64_t h = hashBytes(dat);
-        while (!recent.empty() && recent.front().t < tt - 4 * kDupWindow) recent.pop_front();
-        for (const Recent& r : recent) if (r.h == h && r.baud == baud && std::llabs(r.t - tt) < kDupWindow) return;
-        recent.push_back({h, tt, baud});
+        // forget by the input's clock, not by this frame's time: demodulators take turns over a whole input block (the two 9600 baud slicers), so the copy
+        // of one frame can arrive after a later frame, and pruning by that later frame's time listed it twice ("again, via direct")
+        while (!recent.empty() && recent.front().t < fe.n96 - (int64_t)kMidRate) recent.pop_front();
+        for (Recent& r : recent)
+            if (r.h == h && r.baud == baud && std::llabs(r.t - tt) < kDupWindow) {
+                if (fec && !r.fec) { r.fec = fec; markFec(r.t, fec, fecRepaired); }   // the plain receiver was first: the frame still came as FX.25
+                return;
+            }
+        recent.push_back({h, tt, baud, fec});
         if (baud == 1200 && variant >= 0) {   // the tone balance of this frame, from the demodulator that got it
             const AfskMulti& a = afsk[std::min(2, variant / 16)];
             if (a.markAvg > 0 && a.spaceAvg > 0) { twistSum += a.markDb() - a.spaceDb(); twistN++; }
         }
-        accept(baud, dat, tt, fixedBits);
+        accept(baud, dat, tt, fixedBits, fec, fecRepaired);
+    }
+
+    static const char* fecName(int fec) { return fec == 1 ? "FX.25" : fec == 2 ? "IL2P" : ""; }
+    static std::string fecNote(int fec, int repaired) {
+        if (!fec) return "";
+        return std::string(" [") + fecName(fec) + (repaired ? ", " + std::to_string(repaired) + (repaired == 1 ? " byte repaired]" : " bytes repaired]") : "]");
+    }
+    void countFec(int fec, int repaired) {
+        if (fec == 1) t.fx25Frames++; else if (fec == 2) t.il2pFrames++;
+        if (fec && repaired) t.fecRepairedFrames++;
+    }
+    // the listed frame received at tt (plain AX.25 first) came with FEC too
+    void markFec(int64_t tt, int fec, int repaired) {
+        const double ts = (double)tt / kMidRate;
+        for (auto it = frames.rbegin(); it != frames.rend(); ++it)
+            if (std::fabs(it->timeSec - ts) < 1e-9) {
+                if (it->fec.empty()) { it->fec = fecName(fec); it->fecRepaired = repaired; it->summary += fecNote(fec, repaired); countFec(fec, repaired); }
+                return;
+            }
     }
 
     void flushFails(bool all) {
@@ -312,7 +346,7 @@ struct PacketReceiver::Impl {
         }
     }
 
-    void accept(int baud, const std::vector<uint8_t>& dat, int64_t tt, int fixedBits) {
+    void accept(int baud, const std::vector<uint8_t>& dat, int64_t tt, int fixedBits, int fec = 0, int fecRepaired = 0) {
         const double tnow = (double)tt / kMidRate;
         ax25::Frame f;
         if (!ax25::parseFrame(dat.data(), dat.size(), f)) { t.blocksBad++; if (baud == 1200) t.bad1200++; else t.bad9600++; return; }
@@ -333,6 +367,8 @@ struct PacketReceiver::Impl {
             pf.summary = "AX.25 " + f.typeName() + (f.info.empty() ? "" : ": " + f.info);
         }
         if (fixedBits) pf.summary += fixedBits == 4 ? " [repaired by vote]" : fixedBits == 3 ? " [2 bits fixed]" : " [1 bit fixed]";
+        pf.fec = fecName(fec); pf.fecRepaired = fecRepaired; pf.summary += fecNote(fec, fecRepaired);
+        countFec(fec, fecRepaired);
         // the same packet again through a digipeater (only the path differs): listed, but not counted, gated or announced twice
         const std::string key = pf.from + ">" + pf.to + ":" + f.info;
         auto hk = heard.find(key);

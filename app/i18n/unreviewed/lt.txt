@@ -541,3 +541,4 @@ Large
 Extra large
 Small|Compact|Default|Large|Extra large
 Height and padding of the touch interface's buttons, top bar and dock. Smaller leaves more room for the panels on small screens.
+repaired

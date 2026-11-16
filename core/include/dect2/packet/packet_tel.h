@@ -21,6 +21,8 @@ struct PacketFrameInfo {
     std::string summary;         // what the frame says, in one line
     std::string info;            // the information field as received (control characters kept)
     int baud = 1200;
+    std::string fec;             // "FX.25" or "IL2P" when the frame came with forward error correction (packet_fec.h), else empty
+    int fecRepaired = 0;         // bytes its Reed-Solomon code corrected
     bool hasPos = false;
     double lat = 0, lon = 0;
     int carrierId = 0;           // whole-span decoding (wide_modes.h): the carrier it came from (0 = the single receiver); carrierHz: relative to the radio's centre
@@ -66,6 +68,8 @@ struct PacketTelemetry {
     uint64_t aprsFrames = 0;
     bool carrier = false;
     uint64_t fixedFrames = 0;    // frames that passed only after "fix bits" changed a bit or two
+    uint64_t fx25Frames = 0, il2pFrames = 0;   // frames that came as FX.25 / IL2P (packet_fec.h)
+    uint64_t fecRepairedFrames = 0;            // of those, frames whose Reed-Solomon code corrected bytes
     uint64_t digiCopies = 0;     // packets heard again through a digipeater (listed, not counted as new)
     float twistDb = 0;           // 1200 baud tone balance, mark against space (dB), over the recent frames: about -5 a pre-emphasised transmitter
     uint32_t twistFrames = 0;    // (heard on the radio's discriminator) or +5 de-emphasised speaker audio; 0 frames = not measured yet

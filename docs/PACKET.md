@@ -14,6 +14,7 @@ system and lives in the Mesh mode.
 | Emphasis | Auto (default): no filter, the slicers cover a tone balance of +-6 dB. De-emphasis: for stations that send through a microphone input with pre-emphasis (the 2200 Hz tone louder). Pre-emphasis: for a sound card on a radio's speaker (de-emphasised audio, the 1200 Hz tone louder). The measured balance of the last frames is in the Emphasis tooltip (`PacketTelemetry::twistDb`). |
 | 9600 baud | Two slicers with different filters, peak-tracking threshold, clock loop, the G3RUH descrambler (x^17 + x^12 + 1) and NRZI. |
 | Fix bits | Off by default. 1 bit: a frame that fails its FCS is tried again with one wrong demodulator decision corrected (after NRZI that is two neighbouring bits; at 9600 baud also the descrambler's copies 12 and 17 bits later). 2 bits: also two wrong decisions in a row. Only while a carrier is present, at most three tries per frame, and only frames that look like APRS (capital-letter callsigns, the source with a digit, a UI frame with PID F0, no control characters in the text). A repaired frame shows "[1 bit fixed]". With one wrong decision and CRC-16's minimum distance of 4 a wrong frame cannot pass; with three or more wrong bits it can, rarely. |
+| FX.25 / IL2P | Received at 1200 baud on the same demodulators, nothing to switch on; see "FX.25" below. A frame that came with FEC shows "[FX.25]" or "[IL2P]" (and the bytes repaired) in Packets > Log. |
 | Carrier / DCD | 20 ms power blocks against the noise floor (the 10th percentile of the last 5 s): a block 3 dB over it is a carrier. Failed frames are only counted while a carrier is present (noise between two random flags is not a failure). |
 | Frames | HDLC flags, bit stuffing, abort, FCS (CRC-16-CCITT). Frames list: newest last, 200 kept; stations: 300. A packet heard again within 30 s with only the path changed (a digipeater) is listed as "(again, via ...)" but not counted, gated to APRS-IS or sent to automations again; KISS clients get every frame. |
 | APRS | Positions (plain, with timestamp, compressed, ambiguity), Mic-E, objects and items (killed too), status, messages, acks / rejects (reply-ack "{MM}AA" too), weather (with and without a position), telemetry, capabilities, queries, raw NMEA ($GPRMC / $GPGGA: the position), a '!' position after up to 40 characters of other text, and third-party packets (the station inside is listed with its position, "via" the gateway). |
@@ -62,10 +63,32 @@ FM audio input (speaker audio with the mark 5 dB up, discriminator audio with pr
 frame-free FM voice carrier (no frames), and fix bits at 7 dB (more frames than without it). Synthetic only: not yet compared on a real
 recording such as the WA8LMF TNC test CD.
 
+## FX.25
+
+FX.25 (Stensat Group, 2006) adds Reed-Solomon forward error correction to AX.25 (`core/src/packet/packet_fec.cpp`): the normal AX.25 frame
+(flags, bit stuffing, FCS) sits unchanged in one Reed-Solomon block, announced by a 64-bit correlation tag, and goes through NRZI like any
+frame. A receiver without FX.25 still reads the frame when it arrives without errors; OnAir lists such a frame once, marked [FX.25] (the FEC
+copy comes later, after the padding and the check bytes, and is matched to the plain one). Safe against wrong repairs: Karn's Reed-Solomon
+decoder can return "0 errors" for a block that is not a codeword, so every decode re-encodes the parity and compares; the bytes that are
+never sent must stay zero; and the repaired block must still hold a frame with a good FCS. The built-in test signal (modeOpt[0] = 3) sends
+an FX.25 frame.
+
+Measured with `build/test_packet_fecmodem --sweep` (one APRS position frame of 111 bytes with its FCS, 30 times, carrier to noise in
+25 kHz, 240 ksps, 400 Hz off): frames through, of 30.
+
+| 1200 baud | 3 dB | 4 dB | 5 dB | 6 dB | 7 dB |
+| --- | --- | --- | --- | --- | --- |
+| AX.25 | 1 | 6 | 25 | 29 | 30 |
+| FX.25 | 27 | 30 | 30 | 30 | 30 |
+
+Checked against Dire Wolf 1.8.1: 20 frames of its `gen_packets -X 1` (1200 baud, rising noise) through the FM-audio input: 15, each listed
+once (plain AX.25 from the same tool: 14).
+
 ## Files
 
 - `core/src/packet/packet_rx.cpp`: the receiver (front end, demodulators, frame handling, stations).
 - `core/include/dect2/packet/packet_demod.h`, `packet_demod.cpp`: FM front end, `AfskMulti` (multi-slicer), `Emphasis`, `FskSlicer`.
+- `core/src/packet/packet_fec.cpp`, `packet_fec.h`: FX.25 and IL2P receivers, and the FX.25 encoder the test signal uses.
 - `core/src/packet/packet_ax25.cpp`: frame building, HDLC raw-bit capture and fix bits; `packet_ax25_rs.cpp` and `rust/onair_ax25`: FCS, frame parser, HDLC receiver.
 - `core/src/packet/packet_aprs_full.cpp`: the extra APRS rules on top of the Rust parser (`rust/onair_ax25/src/aprs*.rs`).
-- Tests: `tests/packet/test_packet_tnc.cpp` (benchmark), `test_packet_layers.cpp` (fix bits, parser rules), `test_packet_decode.cpp`, `test_packet_impair.cpp`, `test_packet_width.cpp`, `test_packet_wide.cpp`, `test_packet_engine.cpp`, `test_packet_proto*.cpp`.
+- Tests: `tests/packet/test_packet_fec.cpp` (FX.25 / IL2P bit level), `test_packet_fecmodem.cpp` (FX.25 through the modem, `--sweep`), `tests/packet/test_packet_tnc.cpp` (benchmark), `test_packet_layers.cpp` (fix bits, parser rules), `test_packet_decode.cpp`, `test_packet_impair.cpp`, `test_packet_width.cpp`, `test_packet_wide.cpp`, `test_packet_engine.cpp`, `test_packet_proto*.cpp`.

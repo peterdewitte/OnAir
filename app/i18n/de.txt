@@ -4578,3 +4578,4 @@ Receive only. Listening to non-broadcast utility traffic may be restricted in so
 filter	Filter
 Hide not recognised	Nicht erkannte ausblenden
 Utility telemetry	Versorger-Fernwirktechnik
+repaired	repariert

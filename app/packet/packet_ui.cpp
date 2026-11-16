@@ -337,11 +337,19 @@ std::string frameLine(const dect2::PacketFrameInfo& f) {
     return s;
 }
 
+// "[IL2P, 3 repaired]" for a frame that came with forward error correction (FX.25 / IL2P), else empty
+std::string fecTag(const dect2::PacketFrameInfo& f) {
+    if (f.fec.empty()) return {};
+    std::string s = "[" + f.fec;
+    if (f.fecRepaired > 0) s += ", " + std::to_string(f.fecRepaired) + " " + tr("repaired");
+    return s + "]";
+}
+
 void packetLog(App& a) {
     const dect2::PacketTelemetry& t = a.rx.packet;
     if (ImGui::SmallButton("copy all")) {
         std::string all;
-        for (const auto& f : t.frames) { if (wideActive(a) && f.carrierId > 0) { char fb[24]; snprintf(fb, sizeof fb, "%.4f  ", radioCenterMhz(a) + f.carrierHz / 1e6); all += fb; } all += clockText(f.timeSec) + "  " + frameLine(f) + ":" + printable(f.info) + "\n"; }
+        for (const auto& f : t.frames) { if (wideActive(a) && f.carrierId > 0) { char fb[24]; snprintf(fb, sizeof fb, "%.4f  ", radioCenterMhz(a) + f.carrierHz / 1e6); all += fb; } const std::string tag = fecTag(f); all += clockText(f.timeSec) + "  " + frameLine(f) + ":" + printable(f.info) + (tag.empty() ? "" : "  " + tag) + "\n"; }
         ImGui::SetClipboardText(all.c_str());
     }
     ImGui::SameLine();
@@ -362,7 +370,9 @@ void packetLog(App& a) {
             if (wide) { ImGui::TableNextColumn(); wideCarrierCell(a, f.carrierId, f.carrierHz); }
             ImGui::TableNextColumn(); ImGui::TextUnformatted(clockText(f.timeSec).c_str());
             ImGui::TableNextColumn(); ImGui::TextUnformatted(frameLine(f).c_str());
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%d baud, %s", f.baud, f.type.c_str());
+            const std::string tag = fecTag(f);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%d baud, %s%s%s", f.baud, f.type.c_str(), tag.empty() ? "" : " ", tag.c_str());
+            if (!tag.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", tag.c_str()); }
             ImGui::TableNextColumn(); ImGui::PushTextWrapPos(0); ImGui::TextUnformatted(printable(f.info).c_str()); ImGui::PopTextWrapPos();
         }
         ImGui::PopFont();

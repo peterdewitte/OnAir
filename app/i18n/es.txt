@@ -3647,3 +3647,4 @@ Default	Predeterminado
 Custom	Personalizado
 Join the Discord to get access to built codecs	Únete al Discord para acceder a códecs ya compilados
 Opens the OnAir Discord in your browser. OnAir itself never downloads or includes a codec.	Abre el Discord de OnAir en tu navegador. OnAir nunca descarga ni incluye un códec.
+repaired	reparados

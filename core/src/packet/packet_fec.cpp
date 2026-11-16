@@ -4,6 +4,7 @@
 // FX.25 and IL2P receivers (packet_fec.h).
 #include "dect2/packet/packet_fec.h"
 #include "dect2/packet/packet_ax25.h"
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -48,7 +49,20 @@ void* rsFor(int nroots, int fcr, int pad) {
     return r;
 }
 
+void pushBitsLsb(std::vector<uint8_t>& o, uint64_t v, int n) { for (int i = 0; i < n; i++) o.push_back((uint8_t)((v >> i) & 1)); }
+
 } // namespace
+
+// Reed-Solomon decode of len bytes (data, then nroots parity) in place: the corrections, or -1. Karn's decoder can return 0 for a block that is not a
+// codeword (the error locator comes out of degree 0, so no root is searched and nothing is corrected): with 2 parity bytes it passed about 1 in 500
+// blocks with several bad bytes unchanged. The result is checked by encoding the parity again.
+int rsDecode(uint8_t* blk, int len, int nroots, int fcr) {
+    const int r = decode_rs_char(rsFor(nroots, fcr, 255 - len), blk, nullptr, 0);
+    if (r < 0) return -1;
+    std::vector<uint8_t> par((size_t)nroots);
+    rsEncodeParity(blk, len - nroots, nroots, fcr, par.data());
+    return std::equal(par.begin(), par.end(), blk + (len - nroots)) ? r : -1;
+}
 
 int rsEncodeParity(const uint8_t* d, int n, int nroots, int fcr, uint8_t* par) {
     std::vector<uint8_t> g((size_t)nroots + 1, 0);
@@ -79,6 +93,37 @@ bool fx25Tag(int ctag, uint64_t& value, int& nBytes, int& kBytes) {
     if (ctag < 1 || ctag > 11) return false;
     value = k[ctag].v; nBytes = k[ctag].n; kBytes = k[ctag].k;
     return true;
+}
+
+int fx25PickTag(int checkBytes, int dataBytes) {
+    uint64_t v; int n, k;
+    if (checkBytes == 16 || checkBytes == 32 || checkBytes == 64) {
+        for (int t = 11; t >= 1; t--) if (fx25Tag(t, v, n, k) && n - k == checkBytes && dataBytes <= k) return t;
+        return 0;
+    }
+    for (int t : {4, 3, 6, 9, 5, 1}) if (fx25Tag(t, v, n, k) && dataBytes <= k) return t;
+    return 0;
+}
+
+std::vector<uint8_t> fx25Bits(const std::vector<uint8_t>& frameWithFcs, int checkBytes, int flagsBefore, int flagsAfter) {
+    std::vector<uint8_t> stuffed = ax25::hdlcBits(frameWithFcs, 1, 1);
+    const int tag = fx25PickTag(checkBytes, (int)((stuffed.size() + 7) / 8));
+    uint64_t tv; int n, k;
+    if (!tag || !fx25Tag(tag, tv, n, k)) return {};
+    for (int r = 0; stuffed.size() < (size_t)k * 8; r = (r + 1) & 7) stuffed.push_back((uint8_t)((0x7E >> r) & 1));   // the flag pattern runs on (Dire Wolf)
+    const int nroots = n - k;
+    std::vector<uint8_t> full((size_t)(255 - nroots), 0);                  // the data, then zeros that are not sent
+    for (size_t i = 0; i < (size_t)k * 8; i++) full[i / 8] |= (uint8_t)(stuffed[i] << (i % 8));
+    std::vector<uint8_t> par((size_t)nroots);
+    rsEncodeParity(full.data(), (int)full.size(), nroots, 1, par.data());
+    std::vector<uint8_t> o;
+    o.reserve((size_t)(flagsBefore + flagsAfter + 8 + n) * 8);
+    for (int i = 0; i < flagsBefore; i++) pushBitsLsb(o, 0x7E, 8);
+    pushBitsLsb(o, tv, 64);
+    for (int i = 0; i < k; i++) pushBitsLsb(o, full[(size_t)i], 8);
+    for (uint8_t p : par) pushBitsLsb(o, p, 8);
+    for (int i = 0; i < flagsAfter; i++) pushBitsLsb(o, 0x7E, 8);
+    return o;
 }
 
 // The multiplicative scrambler x^9 + x^4 + 1 (draft 0.6; the states of Dire Wolf's il2p_scramble.c): TX start 0x00f and 5 bits of delay, RX start 0x1f0.
@@ -136,21 +181,27 @@ struct PacketFecRx::Impl {
     void reset() { prev = 0; tagReg = 0; fxBytes = 0; fxN = 0; ilSync = 0; ilState = 0; ilOut.clear(); ilBuf.clear(); ilBit = 0; ilAcc = 0; }
 
     void fxBlockDone() {
-        int nv = 0; uint64_t v; int n = 0, k = 0;
-        (void)nv; (void)v;
+        uint64_t v; int n = 0, k = 0;
         packetfec::fx25Tag(fxTag, v, n, k);
         const int nroots = n - k;
         std::vector<uint8_t> block(255, 0);
-        std::memcpy(block.data(), fxBuf.data(), (size_t)k);
-        std::memcpy(block.data() + 255 - nroots, fxBuf.data() + k, (size_t)nroots);
-        const int corr = decode_rs_char(packetfec::rsFor(nroots, 1, 0), block.data(), nullptr, 0);
+        std::copy_n(fxBuf.begin(), k, block.begin());
+        std::copy_n(fxBuf.begin() + k, nroots, block.begin() + (255 - nroots));
+        const int corr = packetfec::rsDecode(block.data(), 255, nroots, 1);
         if (corr < 0) return;
+        if (std::any_of(block.begin() + k, block.begin() + (255 - nroots), [](uint8_t b) { return b != 0; })) return;   // a "repair" of the bytes that are never sent
         // the data holds HDLC with bit stuffing: reuse the HDLC receiver (no NRZI at this layer)
         std::vector<uint8_t> frame;
         bool got = false;
+        int endBit = 0;
         ax25::HdlcRx h([&](const std::vector<uint8_t>& d, bool ok) { if (ok && !got) { frame = d; got = true; } }, false);
-        for (int i = 0; i < k && !got; i++) for (int b = 0; b < 8; b++) h.bit((block[(size_t)i] >> b) & 1);
-        if (got && sink) sink(frame, corr, false);
+        for (int i = 0; i < k * 8 && !got; i++) { h.bit((block[(size_t)i / 8] >> (i % 8)) & 1); endBit = i + 1; }
+        if (!got || !sink) return;
+        PacketFecFrame r;
+        r.ax25 = std::move(frame);
+        r.repaired = corr;
+        r.lateBits = k * 8 - endBit + nroots * 8;   // the padding and the check bytes after the frame: the plain AX.25 copy came that much earlier
+        sink(r);
     }
 
     void fxBitIn(int d) {
@@ -226,7 +277,7 @@ struct PacketFecRx::Impl {
                 for (int i = big; i < count; i++) ilBlocks.push_back(small);
             }
             ilBlock = 0;
-            if (ilBlocks.empty()) { if (sink) sink(ilOut, corr, true); ilState = 0; ilInv = 0; return; }
+            if (ilBlocks.empty()) { if (sink) sink({ilOut, corr, true, 0}); ilState = 0; ilInv = 0; return; }
             ilState = 2; ilBuf.clear();
             return;
         }
@@ -237,7 +288,7 @@ struct PacketFecRx::Impl {
             const auto plain = packetfec::il2pDescramble(ilBuf.data(), (size_t)n);
             ilOut.insert(ilOut.end(), plain.begin(), plain.end());
             ilBuf.clear();
-            if (++ilBlock == ilBlocks.size()) { if (sink) sink(ilOut, 0, true); ilState = 0; ilInv = 0; }
+            if (++ilBlock == ilBlocks.size()) { if (sink) sink({ilOut, 0, true, 0}); ilState = 0; ilInv = 0; }
         }
     }
 };
